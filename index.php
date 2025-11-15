@@ -1,92 +1,158 @@
 <?php
-include 'db.php'; // подключение к базе
+include 'db.php';
 session_start();
+
+// Получаем flash-сообщение, если есть
+$flash = getFlashMessage();
 ?>
 <!DOCTYPE HTML>
 <html>
-  <head>
+<head>
     <title>Новости ЖКХ Астаны</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <link rel="stylesheet" href="assets/css/main.css" />
-  </head>
-  <body>
+    <style>
+        .flash-message {
+            background: #4CAF50;
+            color: white;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .user-info {
+            background: #f5f5f5;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .admin-badge {
+            background: #ff5722;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
     <div id="page-wrapper">
 
-      <!-- Header -->
-      <div id="header-wrapper">
-        <div class="container">
-          <div class="row">
-            <div class="col-12">
-              <header id="header">
-                <h1><a href="index.php" id="logo">Новости ЖКХ Астаны</a></h1>
-                <nav id="nav">
-                  <a href="index.php" class="current-page-item">Главная</a>
-                  <a href="twocolumn1.php">Новости</a>
-                  <a href="twocolumn2.php">Статьи</a>
-                  <a href="onecolumn.php">Форум</a>
-                  <a href="threecolumn.php">Полезное</a>
-                </nav>
-              </header>
+        <!-- Header -->
+        <div id="header-wrapper">
+            <div class="container">
+                <div class="row">
+                    <div class="col-12">
+                        <header id="header">
+                            <h1><a href="index.php" id="logo">Новости ЖКХ Астаны</a></h1>
+                            <nav id="nav">
+                                <a href="index.php" class="current-page-item">Главная</a>
+                                <a href="twocolumn1.php">Новости</a>
+                                <a href="twocolumn2.php">Статьи</a>
+                                <a href="onecolumn.php">Форум</a>
+                                <a href="threecolumn.php">Полезное</a>
+                                
+                                <?php if (isLoggedIn()): ?>
+                                    <?php if (isAdmin()): ?>
+                                        <a href="admin/index.php" style="color: #ff5722;">Админ-панель</a>
+                                    <?php endif; ?>
+                                    <a href="logout.php">Выход (<?php echo escape(getCurrentUser()['username']); ?>)</a>
+                                <?php else: ?>
+                                    <a href="login.php">Вход</a>
+                                    <a href="register.php">Регистрация</a>
+                                <?php endif; ?>
+                            </nav>
+                        </header>
+                    </div>
+                </div>
             </div>
-          </div>
         </div>
-      </div>
 
-      <!-- Banner -->
-      <div id="banner-wrapper">
-        <div class="container">
-          <div id="banner">
-            <h2>Добро пожаловать на портал ЖКХ</h2>
-            <span>Все новости, объявления и обсуждения в одном месте</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Main -->
-      <div id="main">
-        <div class="container">
-          <div class="row main-row">
-            <div class="col-12">
-              <section>
-                <h2>Последние новости</h2>
-                <?php
-                // Выводим последние новости из БД
-                $result = $conn->query("SELECT * FROM posts ORDER BY created_at DESC LIMIT 5");
-                if($result->num_rows > 0){
-                  while($row = $result->fetch_assoc()){
-                    echo "<article>";
-                    echo "<h3>{$row['title']}</h3>";
-                    echo "<p>{$row['content']}</p>";
-                    echo "<small>Автор: {$row['author']} | {$row['created_at']}</small>";
-                    echo "<hr>";
-                    echo "</article>";
-                  }
-                } else {
-                  echo "<p>Новостей пока нет.</p>";
-                }
-                ?>
-                <footer class="controls">
-                  <a href="twocolumn1.php" class="button">Все новости</a>
-                </footer>
-              </section>
+        <!-- Banner -->
+        <div id="banner-wrapper">
+            <div class="container">
+                <div id="banner">
+                    <h2>Добро пожаловать на портал ЖКХ</h2>
+                    <span>Все новости, объявления и обсуждения в одном месте</span>
+                </div>
             </div>
-          </div>
         </div>
-      </div>
 
-      <!-- Footer -->
-      <div id="footer-wrapper">
-        <div class="container">
-          <div class="row">
-            <div class="col-12">
-              <div id="copyright">
-                &copy; 2025 ЖКХ Портал. Дизайн: <a href="http://html5up.net">HTML5 UP</a>
-              </div>
+        <!-- Main -->
+        <div id="main">
+            <div class="container">
+                
+                <?php if ($flash): ?>
+                    <div class="flash-message">
+                        <?php echo escape($flash); ?>
+                    </div>
+                <?php endif; ?>
+                
+                <?php if (isLoggedIn()): ?>
+                    <div class="user-info">
+                        👤 Вы вошли как: <strong><?php echo escape(getCurrentUser()['username']); ?></strong>
+                        <?php if (isAdmin()): ?>
+                            <span class="admin-badge">АДМИН/РЕДАКТОР</span>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <div class="row main-row">
+                    <div class="col-12">
+                        <section>
+                            <h2>Последние новости</h2>
+                            <?php
+                            // Выводим последние новости с информацией об авторе
+                            $stmt = $conn->prepare("
+                                SELECT p.*, u.username as author_name 
+                                FROM posts p 
+                                LEFT JOIN users u ON p.author_id = u.id 
+                                ORDER BY p.created_at DESC 
+                                LIMIT 5
+                            ");
+                            $stmt->execute();
+                            $result = $stmt->get_result();
+                            
+                            if ($result->num_rows > 0) {
+                                while ($row = $result->fetch_assoc()) {
+                                    echo "<article>";
+                                    echo "<h3>" . escape($row['title']) . "</h3>";
+                                    echo "<p>" . nl2br(escape($row['content'])) . "</p>";
+                                    
+                                    $authorName = $row['author_name'] ?? $row['author'] ?? 'Неизвестный';
+                                    echo "<small>Автор: " . escape($authorName) . " | " . $row['created_at'] . "</small>";
+                                    
+                                    echo "<hr>";
+                                    echo "</article>";
+                                }
+                            } else {
+                                echo "<p>Новостей пока нет.</p>";
+                            }
+                            $stmt->close();
+                            ?>
+                            <footer class="controls">
+                                <a href="twocolumn1.php" class="button">Все новости</a>
+                            </footer>
+                        </section>
+                    </div>
+                </div>
             </div>
-          </div>
         </div>
-      </div>
+
+        <!-- Footer -->
+        <div id="footer-wrapper">
+            <div class="container">
+                <div class="row">
+                    <div class="col-12">
+                        <div id="copyright">
+                            &copy; 2025 ЖКХ Портал. Дизайн: <a href="http://html5up.net">HTML5 UP</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
     </div>
 
@@ -97,5 +163,5 @@ session_start();
     <script src="assets/js/util.js"></script>
     <script src="assets/js/main.js"></script>
 
-  </body>
+</body>
 </html>
