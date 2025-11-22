@@ -38,7 +38,7 @@ session_start();
                                 
                                 <?php if (isLoggedIn()): ?>
                                     <?php if (isAdmin()): ?>
-                                        <a href="admin/index.php" style="color: #ff5722;">Админ-панель</a>
+                                        <a href="admin/index.php" style="color: #ff5722;">Админ</a>
                                     <?php endif; ?>
                                     <a href="logout.php">Выход (<?php echo escape(getCurrentUser()['username']); ?>)</a>
                                 <?php else: ?>
