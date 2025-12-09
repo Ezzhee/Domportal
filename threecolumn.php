@@ -108,23 +108,7 @@ session_start();
 
                     <!-- Правая колонка -->
                     <div class="col-3 col-12-medium">
-                        <section>
-                            <h2>Последние пользователи</h2>
-                            <ul class="small-image-list">
-                            <?php
-                            $users = $conn->query("SELECT username, role FROM users ORDER BY id DESC LIMIT 5");
-                            if ($users) {
-                                while ($u = $users->fetch_assoc()) {
-                                    $username_html = escape($u['username']);
-                                    $badge = $u['role'] === 'admin' ? ' 👑' : '';
-                                    echo "<li><img src='images/pic1.jpg' alt='' class='left' /><p>{$username_html}{$badge}</p></li>";
-                                }
-                            } else {
-                                echo "<li>Нет пользователей</li>";
-                            }
-                            ?>
-                            </ul>
-                        </section>
+                        
 
                         <section>
                             <h2>О проекте</h2>

@@ -17,6 +17,54 @@ session_start();
             margin: 20px 0;
             border-left: 4px solid #ff9800;
         }
+        .news-item {
+            background: #f9f9f9;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .news-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .news-image {
+            width: 100%;
+            max-height: 300px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .news-title {
+            color: #2196F3;
+            text-decoration: none;
+            font-size: 20px;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .news-title:hover {
+            color: #1976D2;
+            text-decoration: underline;
+        }
+        .news-excerpt {
+            color: #333;
+            line-height: 1.6;
+            margin: 10px 0;
+        }
+        .read-more {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #2196F3;
+            color: white;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .read-more:hover {
+            background: #1976D2;
+        }
     </style>
 </head>
 <body>
@@ -81,12 +129,30 @@ session_start();
                             
                             if ($result->num_rows > 0) {
                                 while ($row = $result->fetch_assoc()) {
-                                    echo "<article style='background: #f9f9f9; padding: 20px; margin: 15px 0; border-radius: 8px;'>";
-                                    echo "<h3>" . escape($row['title']) . "</h3>";
-                                    echo "<p>" . nl2br(escape($row['content'])) . "</p>";
+                                    echo "<article class='news-item'>";
                                     
+                                    // Изображение
+                                    if (!empty($row['image']) && file_exists($row['image'])) {
+                                        echo "<a href='post.php?id={$row['id']}'>";
+                                        echo "<img src='" . escape($row['image']) . "' alt='" . escape($row['title']) . "' class='news-image'>";
+                                        echo "</a>";
+                                    }
+                                    
+                                    // Заголовок
+                                    echo "<a href='post.php?id={$row['id']}' class='news-title'>" . escape($row['title']) . "</a>";
+                                    
+                                    // Превью текста
+                                    $excerpt = mb_substr($row['content'], 0, 250);
+                                    if (mb_strlen($row['content']) > 250) $excerpt .= '...';
+                                    echo "<div class='news-excerpt'>" . nl2br(escape($excerpt)) . "</div>";
+                                    
+                                    // Метаданные
                                     $authorName = $row['author_name'] ?? $row['author'] ?? 'Редакция';
                                     echo "<small style='color: #666;'>Автор: " . escape($authorName) . " | " . $row['created_at'] . "</small>";
+                                    
+                                    // Кнопка "Читать далее"
+                                    echo "<br><a href='post.php?id={$row['id']}' class='read-more'>Читать далее →</a>";
+                                    
                                     echo "</article>";
                                 }
                             } else {

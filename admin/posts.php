@@ -16,11 +16,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $title = trim($_POST['title']);
         $content = trim($_POST['content']);
         $author_id = getCurrentUser()['id'];
+        $image_path = null;
+        
+        // Обработка загрузки изображения
+        if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+            $upload_dir = '../uploads/posts/';
+            if (!file_exists($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
+            
+            $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+            $max_size = 5 * 1024 * 1024; // 5 MB
+            
+            if (in_array($_FILES['image']['type'], $allowed_types) && $_FILES['image']['size'] <= $max_size) {
+                $file_ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
+                $safe_filename = 'post_' . uniqid() . '.' . $file_ext;
+                $image_path = $upload_dir . $safe_filename;
+                
+                move_uploaded_file($_FILES['image']['tmp_name'], $image_path);
+            }
+        }
         
         if (!empty($title) && !empty($content)) {
-            $stmt = $conn->prepare("INSERT INTO posts (title, content, author_id, author) VALUES (?, ?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO posts (title, content, author_id, author, image) VALUES (?, ?, ?, ?, ?)");
             $author_name = getCurrentUser()['username'];
-            $stmt->bind_param("ssis", $title, $content, $author_id, $author_name);
+            $stmt->bind_param("ssiss", $title, $content, $author_id, $author_name, $image_path);
             if ($stmt->execute()) {
                 $flash = '✅ Новость добавлена!';
             }
@@ -32,10 +52,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)$_POST['id'];
         $title = trim($_POST['title']);
         $content = trim($_POST['content']);
+        $image_path = $_POST['existing_image'] ?? null;
+        
+        // Обработка новой загрузки изображения
+        if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+            $upload_dir = '../uploads/posts/';
+            if (!file_exists($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
+            
+            $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+            $max_size = 5 * 1024 * 1024;
+            
+            if (in_array($_FILES['image']['type'], $allowed_types) && $_FILES['image']['size'] <= $max_size) {
+                // Удаляем старое изображение
+                if (!empty($image_path) && file_exists($image_path)) {
+                    unlink($image_path);
+                }
+                
+                $file_ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
+                $safe_filename = 'post_' . uniqid() . '.' . $file_ext;
+                $image_path = $upload_dir . $safe_filename;
+                
+                move_uploaded_file($_FILES['image']['tmp_name'], $image_path);
+            }
+        }
+        
+        // Удаление изображения если нужно
+        if (isset($_POST['delete_image'])) {
+            if (!empty($image_path) && file_exists($image_path)) {
+                unlink($image_path);
+            }
+            $image_path = null;
+        }
         
         if (!empty($title) && !empty($content)) {
-            $stmt = $conn->prepare("UPDATE posts SET title = ?, content = ? WHERE id = ?");
-            $stmt->bind_param("ssi", $title, $content, $id);
+            $stmt = $conn->prepare("UPDATE posts SET title = ?, content = ?, image = ? WHERE id = ?");
+            $stmt->bind_param("sssi", $title, $content, $image_path, $id);
             if ($stmt->execute()) {
                 $flash = '✅ Новость обновлена!';
             }
@@ -47,6 +100,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Обработка удаления
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
+    
+    // Получаем путь к изображению
+    $result = $conn->query("SELECT image FROM posts WHERE id = $id");
+    if ($row = $result->fetch_assoc()) {
+        if (!empty($row['image']) && file_exists($row['image'])) {
+            unlink($row['image']);
+        }
+    }
+    
     $conn->query("DELETE FROM posts WHERE id = $id");
     $flash = '✅ Новость удалена!';
 }
@@ -99,6 +161,12 @@ $posts = $conn->query("SELECT p.*, u.username FROM posts p LEFT JOIN users u ON 
         .form-group textarea {
             min-height: 150px;
         }
+        .image-preview {
+            max-width: 300px;
+            max-height: 200px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
         .btn {
             padding: 12px 24px;
             border: none;
@@ -123,6 +191,12 @@ $posts = $conn->query("SELECT p.*, u.username FROM posts p LEFT JOIN users u ON 
         .btn-cancel:hover {
             background: #777;
         }
+        .btn-danger {
+            background: #f44336;
+            color: white;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
         .post-list {
             margin-top: 30px;
         }
@@ -132,6 +206,12 @@ $posts = $conn->query("SELECT p.*, u.username FROM posts p LEFT JOIN users u ON 
             margin: 15px 0;
             border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .post-item-image {
+            max-width: 150px;
+            max-height: 100px;
+            margin: 10px 0;
+            border-radius: 4px;
         }
         .post-actions {
             margin-top: 15px;
@@ -211,9 +291,10 @@ $posts = $conn->query("SELECT p.*, u.username FROM posts p LEFT JOIN users u ON 
                 <!-- Форма добавления/редактирования -->
                 <div class="admin-form">
                     <h3><?php echo $edit_mode ? 'Редактировать новость' : 'Добавить новость'; ?></h3>
-                    <form method="POST">
+                    <form method="POST" enctype="multipart/form-data">
                         <?php if ($edit_mode): ?>
                             <input type="hidden" name="id" value="<?php echo $edit_post['id']; ?>">
+                            <input type="hidden" name="existing_image" value="<?php echo $edit_post['image']; ?>">
                         <?php endif; ?>
                         
                         <div class="form-group">
@@ -228,6 +309,22 @@ $posts = $conn->query("SELECT p.*, u.username FROM posts p LEFT JOIN users u ON 
                             <textarea name="content" 
                                       placeholder="Введите текст новости" 
                                       required><?php echo $edit_mode ? escape($edit_post['content']) : ''; ?></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>📷 Изображение:</label>
+                            <?php if ($edit_mode && !empty($edit_post['image']) && file_exists($edit_post['image'])): ?>
+                                <div>
+                                    <img src="<?php echo $edit_post['image']; ?>" class="image-preview" alt="Текущее изображение">
+                                    <br>
+                                    <label>
+                                        <input type="checkbox" name="delete_image" value="1">
+                                        Удалить текущее изображение
+                                    </label>
+                                </div>
+                            <?php endif; ?>
+                            <input type="file" name="image" accept="image/*">
+                            <small style="color: #666;">Можно загрузить: JPG, PNG, GIF. Максимум 5 МБ.</small>
                         </div>
 
                         <?php if ($edit_mode): ?>
@@ -245,6 +342,9 @@ $posts = $conn->query("SELECT p.*, u.username FROM posts p LEFT JOIN users u ON 
                     <?php if ($posts->num_rows > 0): ?>
                         <?php while ($post = $posts->fetch_assoc()): ?>
                             <div class="post-item">
+                                <?php if (!empty($post['image']) && file_exists($post['image'])): ?>
+                                    <img src="<?php echo $post['image']; ?>" class="post-item-image" alt="">
+                                <?php endif; ?>
                                 <h4><?php echo escape($post['title']); ?></h4>
                                 <p><?php echo nl2br(escape(mb_substr($post['content'], 0, 200))); ?>...</p>
                                 <small>
@@ -252,6 +352,7 @@ $posts = $conn->query("SELECT p.*, u.username FROM posts p LEFT JOIN users u ON 
                                     Дата: <?php echo $post['created_at']; ?>
                                 </small>
                                 <div class="post-actions">
+                                    <a href="../post.php?id=<?php echo $post['id']; ?>" class="btn btn-small" style="background: #9C27B0; color: white;" target="_blank">👁️ Просмотр</a>
                                     <a href="?edit=<?php echo $post['id']; ?>" class="btn btn-small btn-edit">✏️ Редактировать</a>
                                     <a href="?delete=<?php echo $post['id']; ?>" 
                                        class="btn btn-small btn-delete" 

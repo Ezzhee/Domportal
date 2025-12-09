@@ -35,6 +35,31 @@ $flash = getFlashMessage();
             font-size: 12px;
             margin-left: 5px;
         }
+        .news-preview {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border-left: 4px solid #2196F3;
+        }
+        .news-preview h3 {
+            margin-top: 0;
+        }
+        .news-preview h3 a {
+            color: #2196F3;
+            text-decoration: none;
+        }
+        .news-preview h3 a:hover {
+            color: #1976D2;
+            text-decoration: underline;
+        }
+        .news-preview-image {
+            width: 100%;
+            max-height: 200px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -117,14 +142,26 @@ $flash = getFlashMessage();
                             
                             if ($result->num_rows > 0) {
                                 while ($row = $result->fetch_assoc()) {
-                                    echo "<article>";
-                                    echo "<h3>" . escape($row['title']) . "</h3>";
-                                    echo "<p>" . nl2br(escape($row['content'])) . "</p>";
+                                    echo "<article class='news-preview'>";
+                                    
+                                    // Изображение
+                                    if (!empty($row['image']) && file_exists($row['image'])) {
+                                        echo "<a href='post.php?id={$row['id']}'>";
+                                        echo "<img src='" . escape($row['image']) . "' alt='" . escape($row['title']) . "' class='news-preview-image'>";
+                                        echo "</a>";
+                                    }
+                                    
+                                    echo "<h3><a href='post.php?id={$row['id']}'>" . escape($row['title']) . "</a></h3>";
+                                    
+                                    // Превью текста
+                                    $excerpt = mb_substr($row['content'], 0, 200);
+                                    if (mb_strlen($row['content']) > 200) $excerpt .= '...';
+                                    echo "<p>" . nl2br(escape($excerpt)) . "</p>";
                                     
                                     $authorName = $row['author_name'] ?? $row['author'] ?? 'Неизвестный';
-                                    echo "<small>Автор: " . escape($authorName) . " | " . $row['created_at'] . "</small>";
+                                    echo "<small>Автор: " . escape($authorName) . " | " . $row['created_at'] . " | ";
+                                    echo "<a href='post.php?id={$row['id']}' style='color: #2196F3;'>Читать далее →</a></small>";
                                     
-                                    echo "<hr>";
                                     echo "</article>";
                                 }
                             } else {

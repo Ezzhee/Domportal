@@ -16,11 +16,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $title = trim($_POST['title']);
         $content = trim($_POST['content']);
         $author_id = getCurrentUser()['id'];
+        $image_path = null;
+        
+        // Обработка загрузки изображения
+        if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+            $upload_dir = '../uploads/articles/';
+            if (!file_exists($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
+            
+            $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+            $max_size = 5 * 1024 * 1024; // 5 MB
+            
+            if (in_array($_FILES['image']['type'], $allowed_types) && $_FILES['image']['size'] <= $max_size) {
+                $file_ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
+                $safe_filename = 'article_' . uniqid() . '.' . $file_ext;
+                $image_path = $upload_dir . $safe_filename;
+                
+                move_uploaded_file($_FILES['image']['tmp_name'], $image_path);
+            }
+        }
         
         if (!empty($title) && !empty($content)) {
-            $stmt = $conn->prepare("INSERT INTO articles (title, content, author_id, author) VALUES (?, ?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO articles (title, content, author_id, author, image) VALUES (?, ?, ?, ?, ?)");
             $author_name = getCurrentUser()['username'];
-            $stmt->bind_param("ssis", $title, $content, $author_id, $author_name);
+            $stmt->bind_param("ssiss", $title, $content, $author_id, $author_name, $image_path);
             if ($stmt->execute()) {
                 $flash = '✅ Статья добавлена!';
             }
@@ -32,10 +52,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)$_POST['id'];
         $title = trim($_POST['title']);
         $content = trim($_POST['content']);
+        $image_path = $_POST['existing_image'] ?? null;
+        
+        // Обработка новой загрузки изображения
+        if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+            $upload_dir = '../uploads/articles/';
+            if (!file_exists($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
+            
+            $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+            $max_size = 5 * 1024 * 1024;
+            
+            if (in_array($_FILES['image']['type'], $allowed_types) && $_FILES['image']['size'] <= $max_size) {
+                // Удаляем старое изображение
+                if (!empty($image_path) && file_exists($image_path)) {
+                    unlink($image_path);
+                }
+                
+                $file_ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
+                $safe_filename = 'article_' . uniqid() . '.' . $file_ext;
+                $image_path = $upload_dir . $safe_filename;
+                
+                move_uploaded_file($_FILES['image']['tmp_name'], $image_path);
+            }
+        }
+        
+        // Удаление изображения если нужно
+        if (isset($_POST['delete_image'])) {
+            if (!empty($image_path) && file_exists($image_path)) {
+                unlink($image_path);
+            }
+            $image_path = null;
+        }
         
         if (!empty($title) && !empty($content)) {
-            $stmt = $conn->prepare("UPDATE articles SET title = ?, content = ? WHERE id = ?");
-            $stmt->bind_param("ssi", $title, $content, $id);
+            $stmt = $conn->prepare("UPDATE articles SET title = ?, content = ?, image = ? WHERE id = ?");
+            $stmt->bind_param("sssi", $title, $content, $image_path, $id);
             if ($stmt->execute()) {
                 $flash = '✅ Статья обновлена!';
             }
@@ -47,6 +100,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Обработка удаления
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
+    
+    // Получаем путь к изображению
+    $result = $conn->query("SELECT image FROM articles WHERE id = $id");
+    if ($row = $result->fetch_assoc()) {
+        if (!empty($row['image']) && file_exists($row['image'])) {
+            unlink($row['image']);
+        }
+    }
+    
     $conn->query("DELETE FROM articles WHERE id = $id");
     $flash = '✅ Статья удалена!';
 }
@@ -99,6 +161,12 @@ $articles = $conn->query("SELECT a.*, u.username FROM articles a LEFT JOIN users
         .form-group textarea {
             min-height: 200px;
         }
+        .image-preview {
+            max-width: 300px;
+            max-height: 200px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
         .btn {
             padding: 12px 24px;
             border: none;
@@ -132,6 +200,12 @@ $articles = $conn->query("SELECT a.*, u.username FROM articles a LEFT JOIN users
             margin: 15px 0;
             border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .article-item-image {
+            max-width: 150px;
+            max-height: 100px;
+            margin: 10px 0;
+            border-radius: 4px;
         }
         .article-actions {
             margin-top: 15px;
@@ -211,9 +285,10 @@ $articles = $conn->query("SELECT a.*, u.username FROM articles a LEFT JOIN users
                 <!-- Форма добавления/редактирования -->
                 <div class="admin-form">
                     <h3><?php echo $edit_mode ? 'Редактировать статью' : 'Добавить статью'; ?></h3>
-                    <form method="POST">
+                    <form method="POST" enctype="multipart/form-data">
                         <?php if ($edit_mode): ?>
                             <input type="hidden" name="id" value="<?php echo $edit_article['id']; ?>">
+                            <input type="hidden" name="existing_image" value="<?php echo $edit_article['image']; ?>">
                         <?php endif; ?>
                         
                         <div class="form-group">
@@ -228,6 +303,22 @@ $articles = $conn->query("SELECT a.*, u.username FROM articles a LEFT JOIN users
                             <textarea name="content" 
                                       placeholder="Введите текст статьи" 
                                       required><?php echo $edit_mode ? escape($edit_article['content']) : ''; ?></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>📷 Изображение:</label>
+                            <?php if ($edit_mode && !empty($edit_article['image']) && file_exists($edit_article['image'])): ?>
+                                <div>
+                                    <img src="<?php echo $edit_article['image']; ?>" class="image-preview" alt="Текущее изображение">
+                                    <br>
+                                    <label>
+                                        <input type="checkbox" name="delete_image" value="1">
+                                        Удалить текущее изображение
+                                    </label>
+                                </div>
+                            <?php endif; ?>
+                            <input type="file" name="image" accept="image/*">
+                            <small style="color: #666;">Можно загрузить: JPG, PNG, GIF. Максимум 5 МБ.</small>
                         </div>
 
                         <?php if ($edit_mode): ?>
@@ -245,6 +336,9 @@ $articles = $conn->query("SELECT a.*, u.username FROM articles a LEFT JOIN users
                     <?php if ($articles->num_rows > 0): ?>
                         <?php while ($article = $articles->fetch_assoc()): ?>
                             <div class="article-item">
+                                <?php if (!empty($article['image']) && file_exists($article['image'])): ?>
+                                    <img src="<?php echo $article['image']; ?>" class="article-item-image" alt="">
+                                <?php endif; ?>
                                 <h4><?php echo escape($article['title']); ?></h4>
                                 <p><?php echo nl2br(escape(mb_substr($article['content'], 0, 200))); ?>...</p>
                                 <small>
@@ -252,6 +346,7 @@ $articles = $conn->query("SELECT a.*, u.username FROM articles a LEFT JOIN users
                                     Дата: <?php echo $article['created_at']; ?>
                                 </small>
                                 <div class="article-actions">
+                                    <a href="../article.php?id=<?php echo $article['id']; ?>" class="btn btn-small" style="background: #9C27B0; color: white;" target="_blank">👁️ Просмотр</a>
                                     <a href="?edit=<?php echo $article['id']; ?>" class="btn btn-small btn-edit">✏️ Редактировать</a>
                                     <a href="?delete=<?php echo $article['id']; ?>" 
                                        class="btn btn-small btn-delete" 
